@@ -1,6 +1,7 @@
 import express from "express"
 import dotenv from "dotenv"
 import mongoose from "mongoose"
+import cors from "cors"
 dotenv.config()
 const port = process.env.PORT || 5000
 const mongodbUrl=process.env.MONGODB_URL
@@ -16,15 +17,56 @@ const connectDb=async () => {
     }
 }
 
+const allowedOrigins = [
+    process.env.NEXT_BASE_URL,
+    "https://road-mate-microservice.vercel.app",
+    "http://localhost:3000"
+].filter(Boolean)
+
 const app=express()
+app.use(cors({ origin: allowedOrigins }))
 app.use(express.json())
 const server=http.createServer(app)
 
 const io=new Server(server,{
     cors:{
-        origin:process.env.NEXT_BASE_URL
+        origin: allowedOrigins,
+        methods: ["GET", "POST"]
     }
 })
+
+// Root & Health check endpoint
+app.get("/", (req, res) => {
+    res.send("Hello I am Roadmate SocketServer")
+})
+
+app.get("/health", (req, res) => {
+    res.json({
+        status: "ok",
+        message: "Hello I am Roadmate SocketServer",
+        timestamp: new Date().toISOString()
+    })
+})
+
+// 10-minute keep-alive self-ping request
+const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000 // 10 minutes
+
+setInterval(async () => {
+    try {
+        const targetUrl = process.env.RENDER_EXTERNAL_URL || process.env.SERVER_URL || `http://localhost:${port}`
+        const res = await fetch(targetUrl)
+        const text = await res.text()
+        console.log(`[${new Date().toLocaleTimeString()}] Keep-alive ping to ${targetUrl} -> "${text.trim()}"`)
+
+        // Also emit heartbeat to connected socket clients
+        io.emit("heartbeat", {
+            message: "Hello I am Roadmate SocketServer",
+            timestamp: new Date().toISOString()
+        })
+    } catch (err) {
+        console.log("[Keep-alive] Ping error:", err.message)
+    }
+}, KEEP_ALIVE_INTERVAL)
 
 
 app.post("/emit",async (req,res)=>{
